@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate-compose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Docker versions
+        run: |
+          docker --version || true
+          docker compose version || true
+          docker-compose version || true
+
+      - name: Validate docker-compose.dev.yml
+        run: |
+          set -e
+          if docker compose version >/dev/null 2>&1; then
+            DC="docker compose"
+          elif command -v docker-compose >/dev/null 2>&1; then
+            DC="docker-compose"
+          else:
+            echo "Docker Compose not found"
+            exit 1
+          fi
+          $DC -f infra/compose/docker-compose.dev.yml config

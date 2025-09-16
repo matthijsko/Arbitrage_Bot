@@ -1,27 +1,43 @@
-# Python
+# ---- Python ----
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.pyd
 .pytest_cache/
 .venv/
+.venv*/
+env/
+venv/
 .ruff_cache/
+.mypy_cache/
+coverage/
+htmlcov/
 
-# Node/Frontend
+# ---- Node/Frontend ----
 node_modules/
 .next/
 dist/
 build/
 coverage/
+*.log
 
-# OS/IDE
+# ---- OS/IDE ----
 .DS_Store
+Thumbs.db
 .idea/
+.vscode/*
 
-# Env & secrets
+# Keep useful VS Code configs
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# ---- Env & secrets ----
 .env
 **/.env
 *.env.local
+*.env.*.local
 
-# Docker
+# ---- Docker ----
+*.pid
 docker/*.env
+*.tar
