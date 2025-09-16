@@ -1,0 +1,36 @@
+# --- Git ---
+.git
+.gitignore
+
+# --- Node deps & builds ---
+node_modules/
+.next/
+dist/
+build/
+
+# --- Tests & reports ---
+coverage/
+*.lcov
+
+# --- Env & secrets ---
+.env
+.env.*
+*.env.local
+
+# --- Logs & cache ---
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+.cache/
+tmp/
+
+# --- IDE/OS ---
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# --- Python leftovers (if any) ---
+__pycache__/
+*.py[cod]

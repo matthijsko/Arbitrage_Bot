@@ -1,0 +1,52 @@
+# --- Git ---
+.git
+.gitignore
+
+# --- Python caches ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Virtual envs ---
+.venv
+.venv*/
+env/
+venv/
+
+# --- Tests & reports (not needed in runtime image) ---
+tests/
+.coverage
+htmlcov/
+coverage/
+
+# --- IDE/OS ---
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# --- Env & secrets ---
+.env
+.env.*
+*.env.local
+
+# --- Logs & tmp ---
+*.log
+*.pid
+tmp/
+data/
+cache/
+
+# --- Compose/infra (not needed inside service build context) ---
+/infra/
+/docker/
+
+# --- Node leftovers (if any) ---
+node_modules/
+dist/
+build/
+.next/
