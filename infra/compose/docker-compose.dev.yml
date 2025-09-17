@@ -27,7 +27,7 @@ services:
     ports:
     - 8000:8000
     env_file:
-    - ../../apps/api/.env
+    - ../../apps/api/.env.example
     healthcheck:
       test:
       - CMD-SHELL
@@ -46,7 +46,7 @@ services:
     ports:
     - 8010:8010
     env_file:
-    - ../../apps/bot/.env
+    - ../../apps/bot/.env.example
     healthcheck:
       test:
       - CMD-SHELL
@@ -65,7 +65,7 @@ services:
     ports:
     - 6000:6000
     env_file:
-    - ../../apps/frontend/.env
+    - ../../apps/frontend/.env.example
     healthcheck:
       test:
       - CMD-SHELL
