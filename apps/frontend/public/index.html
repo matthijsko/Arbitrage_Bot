@@ -1,0 +1,100 @@
+<!doctype html>
+<html>
+   <head>
+      <meta charset="utf-8">
+      <title>Arbitrage Dashboard</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <script src="/config.js"></script>
+      <style>body{margin:0;background:#0b1220;color:#e6edf3;font-family:ui-sans-serif,system-ui}
+         header{padding:16px 20px;border-bottom:1px solid #1e293b;display:flex;gap:16px;align-items:center}
+         main{padding:16px 20px;display:grid;gap:20px}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+         input,select,button{background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:8px;padding:8px 10px}
+         .card{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:14px}table{width:100%;border-collapse:collapse}
+         th,td{padding:8px 10px;border-bottom:1px solid #1e293b;font-size:14px}th{color:#93c5fd}.muted{color:#94a3b8}
+         .good{color:#22c55e}.bad{color:#ef4444}.grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+         @media (max-width:960px){.grid-2{grid-template-columns:1fr}}.pill{padding:2px 8px;border:1px solid #374151;border-radius:999px}
+      </style>
+   </head>
+   <body>
+      <header>
+         <h1>Arbitrage Dashboard</h1>
+         <div class="pill" id="status">idle</div>
+         <div class="muted" id="lastUpdate"></div>
+      </header>
+      <main>
+         <section class="card">
+            <div class="row">
+               <label>
+                  Symbol 
+                  <select id="symbol">
+                     <option>BTC/EUR</option>
+                     <option>ETH/EUR</option>
+                     <option>BTC/USDT</option>
+                     <option>ETH/USDT</option>
+                  </select>
+               </label>
+               <label>
+                  Exchanges 
+                  <select id="exchanges" multiple size="3">
+                     <option value="bitvavo" selected>bitvavo</option>
+                     <option value="coinbase" selected>coinbase</option>
+                     <option value="kraken" selected>kraken</option>
+                  </select>
+               </label>
+               <label>Budget <input id="budget" type="number" value="250" step="10" min="10"></label>
+               <label>Interval (ms) <input id="interval" type="number" value="2000" step="100" min="500"></label>
+               <button id="start">Start live scan</button><button id="stop" disabled>Stop</button>
+            </div>
+         </section>
+         <section class="card">
+            <h3 style="margin:0">Live Opportunities</h3>
+            <div class="muted" id="oppsInfo">—</div>
+            <table id="oppsTable">
+               <thead>
+                  <tr>
+                     <th>#</th>
+                     <th>Symbol</th>
+                     <th>Buy</th>
+                     <th>Sell</th>
+                     <th>Best Ask</th>
+                     <th>Best Bid</th>
+                     <th>Gross (bps)</th>
+                     <th>Net Profit</th>
+                     <th>Qty</th>
+                     <th>ROI</th>
+                  </tr>
+               </thead>
+               <tbody></tbody>
+            </table>
+         </section>
+         <section class="card">
+            <h3 style="margin:0">Best Bid/Ask per Exchange</h3>
+            <div class="grid-2" id="obaGrid"></div>
+         </section>
+      </main>
+      <script>
+         const statusEl=document.getElementById('status'),lastUpdateEl=document.getElementById('lastUpdate');
+         const symbolEl=document.getElementById('symbol'),exchangesEl=document.getElementById('exchanges');
+         const budgetEl=document.getElementById('budget'),intervalEl=document.getElementById('interval');
+         const startBtn=document.getElementById('start'),stopBtn=document.getElementById('stop');
+         const oppsInfoEl=document.getElementById('oppsInfo'),oppsTbody=document.querySelector('#oppsTable tbody'),obaGrid=document.getElementById('obaGrid');
+         let timer=null;function selEx(){return Array.from(exchangesEl.selectedOptions).map(o=>o.value)};function fmt(n,d=2){return(n==null||isNaN(n))?'—':Number(n).toFixed(d)}
+         function bps(x){return x*10000}function setStatus(s){statusEl.textContent=s}
+         async function fetchJSON(u){const r=await fetch(u);if(!r.ok)throw new Error(await r.text());return r.json()}
+         async function refreshOnce(){const API=window.API_BASE||'http://localhost:8000';const symbol=encodeURIComponent(symbolEl.value);const ex=selEx().join(',');const budget=Number(budgetEl.value)||250;
+         const scanUrl=`${API}/arbitrage/scan?symbol=${symbol}&exchanges=${encodeURIComponent(ex)}&budget_quote=${budget}`;const data=await fetchJSON(scanUrl);
+         const rows=(data.results||[]).slice(0,10);oppsInfoEl.textContent=`${rows.length} results • symbol=${data.symbol} • exchanges=[${data.exchanges.join(', ')}]`;
+         oppsTbody.innerHTML=rows.map((r,i)=>{const gross=r.gross_spread??0;const dr=r.depth_result||{};const net=dr.net_profit_quote??0;const qty=dr.qty_base_sold??dr.qty_base_bought??0;
+         const roi=dr.roi??(dr.spent_quote?net/dr.spent_quote:0);return `<tr><td>${i+1}</td><td>${r.symbol}</td><td>${r.buy}</td><td>${r.sell}</td>
+         <td>${fmt(r.best_ask)}</td><td>${fmt(r.best_bid)}</td><td>${fmt(bps(gross),2)}</td><td class="${net>0?'good':'bad'}">${fmt(net,2)}</td><td>${fmt(qty,6)}</td><td>${fmt((roi||0)*100,2)}%</td></tr>`}).join('');
+         obaGrid.innerHTML='';for(const exname of selEx()){try{const ob=await fetchJSON(`${API}/markets/orderbook?exchange=${encodeURIComponent(exname)}&symbol=${symbol}&limit=3`);
+         const asks=ob.asks||[],bids=ob.bids||[];const ba=asks.length?asks[0][0]:null,bb=bids.length?bids[0][0]:null;const spr=(ba&&bb)?((bb-ba)/ba):null;const src=ob.source||'—';
+         const card=document.createElement('div');card.className='card';card.innerHTML=`<div class="row" style="justify-content:space-between"><div><strong>${exname}</strong> <span class="pill">${src}</span></div><div class="muted">${new Date().toLocaleTimeString()}</div></div>
+         <div class="row" style="margin-top:8px"><div>Best Ask: <strong>${fmt(ba)}</strong></div><div>Best Bid: <strong>${fmt(bb)}</strong></div><div>Spread: <strong>${spr!==null?fmt(bps(spr),2)+' bps':'—'}</strong></div></div>`;obaGrid.appendChild(card);}
+         catch(e){const card=document.createElement('div');card.className='card';card.innerHTML=`<div><strong>${exname}</strong></div><div class="bad">Error loading orderbook</div>`;obaGrid.appendChild(card);}}
+         lastUpdateEl.textContent=`last update: ${new Date().toLocaleTimeString()}`;}
+         startBtn.addEventListener('click',async()=>{if(timer)return;setStatus('running');startBtn.disabled=true;stopBtn.disabled=false;await refreshOnce();const itv=Math.max(500,Number(intervalEl.value)||2000);timer=setInterval(refreshOnce,itv);});
+         stopBtn.addEventListener('click',()=>{if(timer)clearInterval(timer);timer=null;setStatus('idle');startBtn.disabled=false;stopBtn.disabled=true;});
+      </script>
+   </body>
+</html>

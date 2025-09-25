@@ -62,20 +62,12 @@ services:
     build:
       context: ../../apps/frontend
       dockerfile: Dockerfile
-    ports:
-    - 6000:6000
-    env_file:
+    container_name: arbitrage-frontend
+    environment:
     - ../../apps/frontend/.env.example
-    healthcheck:
-      test:
-      - CMD-SHELL
-      - wget -qO- http://localhost:3000/health >/dev/null || exit 1
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
+    ports:
+      - "6000:6000"
     depends_on:
-    - api
-    - bot
+      - api
 volumes:
   pgdata: null

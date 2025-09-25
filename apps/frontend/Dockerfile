@@ -1,9 +1,14 @@
 FROM node:20-alpine
 
 WORKDIR /app
-COPY package.json ./
-RUN npm install --production
-COPY server.js ./
 
+# Gebruik CommonJS, dus geen "type": "module" nodig
+# Als je al een package.json hebt, gebruik die i.p.v. init:
+RUN npm init -y && npm i express
+
+COPY server.js ./server.js
+COPY public ./public
+
+ENV PORT=6000
 EXPOSE 6000
-CMD ["npm", "start"]
+CMD ["node", "server.js"]
