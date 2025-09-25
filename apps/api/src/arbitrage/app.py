@@ -4,6 +4,7 @@ from .config import settings
 from .routers.health import router as health_router
 from .routers.opportunities import router as opps_router
 from .ws.opportunities import router as ws_router
+from .routers.arbitrage import router as arb_router
 
 app = FastAPI(title="Arbitrage API")
 
@@ -17,3 +18,4 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(opps_router)
 app.include_router(ws_router)
+app.include_router(arb_router)
