@@ -1,17 +1,24 @@
 import asyncio
+import contextlib
 from fastapi import FastAPI
+from .workers.stream_worker import run as run_stream
 
-app = FastAPI(title="Arbitrage Bot (Phase B Stub)")
+app = FastAPI(title="Arbitrage Bot (Streams)")
+_task = None
 
 @app.on_event("startup")
 async def startup():
-    # Start a background heartbeat to simulate a worker loop
-    async def heartbeat():
-        while True:
-            await asyncio.sleep(5)
-            # Here you'd typically check connections, queues, etc.
-    asyncio.create_task(heartbeat())
+    global _task
+    _task = asyncio.create_task(run_stream())
+
+@app.on_event("shutdown")
+async def shutdown():
+    global _task
+    if _task:
+        _task.cancel()
+        with contextlib.suppress(Exception):
+            await _task
 
 @app.get("/health")
 def health():
-    return {"ok": True, "service": "bot", "workers": ["heartbeat"]}
+    return {"ok": True, "service": "bot", "streaming": bool(_task)}

@@ -1,16 +1,27 @@
 from typing import Dict, Any, List
 from .exchanges import fetch_orderbook, get_market_meta
+from .orderbook_store import get_cached_orderbook
 from .depth_sim import simulate_cross_fill
 
-def compute_pair_opportunity(
+async def compute_pair_opportunity(
     symbol: str,
     buy_ex: str,
     sell_ex: str,
     budget_quote: float = 100.0,
     withdraw_fee_base: float = 0.0,
 ) -> Dict[str, Any]:
-    asks, _ = fetch_orderbook(buy_ex, symbol, limit=50)
-    _, bids = fetch_orderbook(sell_ex, symbol, limit=50)
+    cached_buy = await get_cached_orderbook(buy_ex, symbol)
+    cached_sell = await get_cached_orderbook(sell_ex, symbol)
+
+    if cached_buy:
+        asks, _ = cached_buy
+    else:
+        asks, _ = fetch_orderbook(buy_ex, symbol, limit=50)
+
+    if cached_sell:
+        _, bids = cached_sell
+    else:
+        _, bids = fetch_orderbook(sell_ex, symbol, limit=50)
 
     if not asks or not bids:
         return {"ok": 0, "reason": "empty_orderbook", "buy": buy_ex, "sell": sell_ex, "symbol": symbol}
@@ -52,14 +63,14 @@ def compute_pair_opportunity(
         "depth_result": res,
     }
 
-def compute_all_pairs(symbol: str, exchanges: List[str], budget_quote: float, withdraw_fee_base: float) -> List[Dict[str, Any]]:
-    out = []
+async def compute_all_pairs(symbol: str, exchanges: List[str], budget_quote: float, withdraw_fee_base: float) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
     for i, buy_ex in enumerate(exchanges):
         for j, sell_ex in enumerate(exchanges):
             if i == j:
                 continue
             try:
-                out.append(compute_pair_opportunity(symbol, buy_ex, sell_ex, budget_quote, withdraw_fee_base))
+                out.append(await compute_pair_opportunity(symbol, buy_ex, sell_ex, budget_quote, withdraw_fee_base))
             except Exception as e:
                 out.append({"ok": 0, "symbol": symbol, "buy": buy_ex, "sell": sell_ex, "error": str(e)})
     out.sort(key=lambda x: (x.get("depth_result", {}).get("net_profit_quote") or -1e18), reverse=True)

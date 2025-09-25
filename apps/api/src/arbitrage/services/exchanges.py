@@ -1,11 +1,7 @@
 import ccxt
 from functools import lru_cache
 
-SUPPORTED = {
-    "bitvavo": ccxt.bitvavo,
-    "coinbase": ccxt.coinbase,   # Coinbase Advanced Trade (niet coinbasepro)
-    "kraken": ccxt.kraken,
-}
+SUPPORTED = {"bitvavo": ccxt.bitvavo, "coinbase": ccxt.coinbase, "kraken": ccxt.kraken}
 
 @lru_cache(maxsize=16)
 def get_exchange(name: str):
