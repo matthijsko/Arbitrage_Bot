@@ -6,6 +6,9 @@ from .routers.opportunities import router as opps_router
 from .ws.opportunities import router as ws_router
 from .routers.arbitrage import router as arb_router
 from .routers.markets import router as markets_router
+from .routers.markets import router as markets_router
+from .routers.diag import router as diag_router
+from .routers.arbitrage import router as arb_router
 
 app = FastAPI(title="Arbitrage API")
 
@@ -21,3 +24,7 @@ app.include_router(opps_router)
 app.include_router(ws_router)
 app.include_router(arb_router)
 app.include_router(markets_router)
+
+app.include_router(markets_router)
+app.include_router(diag_router)
+app.include_router(arb_router)
