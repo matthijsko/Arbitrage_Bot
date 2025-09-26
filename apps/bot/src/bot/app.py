@@ -1,23 +1,31 @@
 import asyncio, contextlib
 from fastapi import FastAPI
-from .workers.stream_worker import run as run_stream
+from .workers.stream import run as run_stream
+from .workers.strategy import run as run_strategy
 
-app = FastAPI(title="Arbitrage Bot (Streams)")
-_task = None
+app = FastAPI(title="Arbitrage Bot (Streams + Strategy)")
+_tasks = []
 
 @app.on_event("startup")
 async def startup():
-    global _task
-    _task = asyncio.create_task(run_stream())
+    global _tasks
+    _tasks.append(asyncio.create_task(run_stream()))
+    _tasks.append(asyncio.create_task(run_strategy()))
 
 @app.on_event("shutdown")
 async def shutdown():
-    global _task
-    if _task:
-        _task.cancel()
+    global _tasks
+    for t in _tasks:
+        t.cancel()
+    for t in _tasks:
         with contextlib.suppress(Exception):
-            await _task
+            await t
 
 @app.get("/health")
 def health():
-    return {"ok": True, "service": "bot", "streaming": bool(_task)}
+    return {
+        "ok": True,
+        "service": "bot",
+        "tasks": len(_tasks),
+        "running": any(not t.done() for t in _tasks),
+    }
