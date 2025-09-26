@@ -1,11 +1,10 @@
 FROM node:20-alpine
-
 WORKDIR /app
 
-# Gebruik CommonJS, dus geen "type": "module" nodig
-# Als je al een package.json hebt, gebruik die i.p.v. init:
+# CommonJS, geen ESM gedoe
 RUN npm init -y && npm i express
 
+# Deze paden werken *alleen* als je build context = apps/frontend
 COPY server.js ./server.js
 COPY public ./public
 
