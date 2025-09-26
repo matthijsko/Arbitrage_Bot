@@ -20,6 +20,8 @@ PAPER_MIN_ROI_PCT   = float(os.getenv("PAPER_MIN_ROI_PCT",  os.getenv("STRAT_MIN
 PAPER_SLIPPAGE_BPS  = float(os.getenv("PAPER_SLIPPAGE_BPS", "2"))  # 2 bps default
 PAPER_DEDUP_COOLDOWN_MS = int(float(os.getenv("PAPER_DEDUP_COOLDOWN_MS", "4000")))  # 4s
 
+ALLOW_NO_PROFIT = os.getenv("ALLOW_NO_PROFIT", "1") not in ("0", "false", "False")
+
 def _now_ms() -> int:
     return int(time.time() * 1000)
 
@@ -39,21 +41,31 @@ def _bps(x: float) -> float:
     return (x or 0.0) * 10000.0
 
 async def _should_execute(r, item: Dict[str, Any]) -> bool:
-    """Filter op ok/net/roi en eenvoudige de-dup binnen korte tijd."""
-    if not item.get("ok"):
-        return False
+    """Filter: ok/net/roi en de-dup. In dev kan ALLOW_NO_PROFIT ook 'ok=0' doorlaten."""
     d = item.get("depth") or {}
+    qty = float(d.get("qty_base_sold") or d.get("qty_base_bought") or 0.0)
+    if qty <= 0:
+        return False
+
+    ok = bool(item.get("ok"))
     net = float(d.get("net_profit_quote") or 0.0)
     roi = float(d.get("roi") or 0.0) * 100.0
-    if net < PAPER_MIN_NET_QUOTE:
+
+    passes_thresholds = (net >= PAPER_MIN_NET_QUOTE and roi >= PAPER_MIN_ROI_PCT)
+    if ok and passes_thresholds:
+        pass  # reguliere case
+    elif ALLOW_NO_PROFIT:
+        # laat in dev alles door dat *zinvolle* qty heeft; thresholds negeren
+        pass
+    else:
         return False
-    if roi < PAPER_MIN_ROI_PCT:
-        return False
-    # Dedup
+
+    # Dedup korte termijn
     h = _hash_item(item)
     key = f"paper:dedup:{h}"
     exists = await r.set(key, b"1", nx=True, px=PAPER_DEDUP_COOLDOWN_MS)
     return bool(exists)
+
 
 def _paper_fill(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Bouw een gesimuleerde fill met slippage en fees (alle input komt uit item/depth)."""
@@ -64,8 +76,8 @@ def _paper_fill(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     best_bid = float(item.get("best_bid") or 0.0)
     d = item.get("depth") or {}
 
-    fee_buy = float(d.get("buy_fee_quote") or 0.0)  # kan 0 zijn; we hebben fees ook nodig los:
-    # maar die zitten niet los in depth; haal ze uit item-level als aanwezig (anders 0.001 als nood)
+    fee_buy = float(d.get("buy_fee_quote") or 0.0)  
+    
     fee_buy_rate = float(item.get("fee_buy") or 0.001)
     fee_sell_rate = float(item.get("fee_sell") or 0.001)
 

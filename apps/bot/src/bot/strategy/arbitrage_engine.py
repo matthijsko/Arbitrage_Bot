@@ -1,4 +1,5 @@
 import os, time, orjson, asyncio
+import traceback
 from typing import Dict, Any, List
 from ..services.orderbook_store import get_cached_orderbook
 from ..services.markets import fetch_orderbook, get_market_meta
@@ -56,13 +57,13 @@ async def compute_pair(
         "best_ask": best_ask,
         "best_bid": best_bid,
         "gross_spread": gross_spread,
+        "fee_buy": fee_buy,
+        "fee_sell": fee_sell,
         "depth": res,
     }
 
-async def scan_all(
-    symbol: str, exchanges: List[str], budget_quote: float, withdraw_fee_base: float
-) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
+async def scan_all(symbol, exchanges, budget_quote, withdraw_fee_base):
+    out = []
     for i, bx in enumerate(exchanges):
         for j, sx in enumerate(exchanges):
             if i == j:
@@ -70,7 +71,16 @@ async def scan_all(
             try:
                 out.append(await compute_pair(symbol, bx, sx, budget_quote, withdraw_fee_base))
             except Exception as e:
-                out.append({"ok": 0, "symbol": symbol, "buy": bx, "sell": sx, "error": str(e)})
+                out.append({
+                    "ok": 0,
+                    "symbol": symbol,
+                    "buy": bx,
+                    "sell": sx,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                    # desgewenst heel kort stack-fragment (laatste regel):
+                    "error_tail": traceback.format_exc().strip().splitlines()[-1],
+                })
     out.sort(key=lambda x: (x.get("depth", {}).get("net_profit_quote") or -1e18), reverse=True)
     return out
 
@@ -85,46 +95,32 @@ async def publish_opportunities(items: List[Dict[str, Any]], topn: int = 5):
     finally:
         await r.close()
 
-async def run_strategy_once(symbols: List[str], exchanges: List[str],
-                            budget_quote: float, withdraw_fee_base: float,
-                            min_net_quote: float, min_roi_pct: float, topn: int) -> Dict[str, Any]:
-    """
-    Returns:
-      {
-        "ts": <ms>,
-        "blocks": [
-           {
-             "symbol": "BTC/EUR",
-             "best": <beste na filters>,            # kan ontbreken als geen winstgevende
-             "top": [<topN na filters>],            # kan leeg zijn
-             "debug_top": [<topN ongefilterd>],     # altijd aanwezig (beste net_profit eerst)
-             "debug_best_any": <beste ongefilterd>  # altijd 1 element of None
-           },
-           ...
-        ]
-      }
-    """
-    blocks: List[Dict[str, Any]] = []
+import os
+PUBLISH_FALLBACK_WHEN_EMPTY = os.getenv("PUBLISH_FALLBACK_WHEN_EMPTY", "1") not in ("0", "false", "False")
+
+async def run_strategy_once(symbols, exchanges, budget_quote, withdraw_fee_base,
+                            min_net_quote, min_roi_pct, topn):
+    blocks = []
 
     for sym in symbols:
         pairs = await scan_all(sym, exchanges, budget_quote, withdraw_fee_base)
-        # ongefilterd op net_profit sorteren (al gedaan in scan_all)
+        # ongefilterd top
         debug_top = pairs[:topn]
-        debug_best_any = next((p for p in pairs if p.get("ok")), None)
+        debug_best_any = next((p for p in pairs if p.get("ok") is not None), None)
 
-        # drempels toepassen
+        # gefilterd op thresholds
         filtered = []
         for p in pairs:
             if not p.get("ok"):
                 continue
             d = p.get("depth", {}) or {}
-            net = d.get("net_profit_quote") or 0.0
-            roi = d.get("roi") or 0.0
-            if net >= min_net_quote and (roi * 100.0) >= min_roi_pct:
+            net = float(d.get("net_profit_quote") or 0.0)
+            roi = float(d.get("roi") or 0.0) * 100.0
+            if net >= min_net_quote and roi >= min_roi_pct:
                 filtered.append(p)
-        filtered.sort(key=lambda x: x.get("depth", {}).get("net_profit_quote") or -1e18, reverse=True)
+        filtered.sort(key=lambda x: (x.get("depth", {}).get("net_profit_quote") or -1e18), reverse=True)
 
-        block: Dict[str, Any] = {
+        block = {
             "symbol": sym,
             "top": filtered[:topn],
             "debug_top": debug_top,
@@ -132,13 +128,18 @@ async def run_strategy_once(symbols: List[str], exchanges: List[str],
         }
         if filtered:
             block["best"] = filtered[0]
-
         blocks.append(block)
 
-    # Publiceer platte lijst (gefilterd) voor downstream consumers
+    # standaard: publiceer alleen gefilterde items
     flat = []
     for b in blocks:
         flat.extend(b.get("top") or [])
-    await publish_opportunities(flat, topn=topn)
 
+    if not flat and PUBLISH_FALLBACK_WHEN_EMPTY:
+        for b in blocks:
+            cand = b.get("debug_best_any") or (b.get("debug_top") or [None])[0]
+            if cand:
+                flat.append(cand)
+
+    await publish_opportunities(flat, topn=topn)
     return {"ts": _now_ms(), "blocks": blocks}

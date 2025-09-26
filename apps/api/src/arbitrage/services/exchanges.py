@@ -1,12 +1,36 @@
 import ccxt
 from functools import lru_cache
 from typing import Dict, List, Optional, Tuple, Any
+from .symbols import resolve_symbol_for_exchange
 
 SUPPORTED = {
     "bitvavo": ccxt.bitvavo,
     "coinbase": ccxt.coinbase,  # Advanced Trade spot
     "kraken": ccxt.kraken,
 }
+
+def _sanitize_levels(levels):
+    out = []
+    for lvl in levels or []:
+        try:
+            if isinstance(lvl, (list, tuple)):
+                if len(lvl) >= 2:
+                    price = float(lvl[0])
+                    amount = float(lvl[1])
+                else:
+                    continue
+            elif isinstance(lvl, dict):
+                # fallback voor incidentele dict-vormen
+                price = float(lvl.get("price") or lvl.get("p") or lvl.get(0))
+                amount = float(lvl.get("amount") or lvl.get("volume") or lvl.get("a") or lvl.get(1))
+            else:
+                continue
+            if amount > 0:
+                out.append((price, amount))
+        except Exception:
+            # negeer corrupte regels
+            continue
+    return out
 
 @lru_cache(maxsize=16)
 def get_exchange(name: str):
@@ -35,40 +59,36 @@ def list_symbols_with_quote(name: str, quote: str) -> List[str]:
             out.append(sym)
     return sorted(out)
 
-def fetch_orderbook(name: str, symbol: str, limit: int = 50) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]]]:
+def fetch_orderbook(name: str, symbol: str, limit: int = 50):
     ex = get_exchange(name)
-    ob = ex.fetch_order_book(symbol, limit=limit)
-    asks = [(float(p), float(a)) for p, a in ob.get("asks", []) if float(a) > 0]
-    bids = [(float(p), float(a)) for p, a in ob.get("bids", []) if float(a) > 0]
+    sym = resolve_symbol_for_exchange(ex, symbol)
+    ob = ex.fetch_order_book(sym, limit=limit)
+    asks = _sanitize_levels(ob.get("asks"))
+    bids = _sanitize_levels(ob.get("bids"))
     asks.sort(key=lambda x: x[0])
     bids.sort(key=lambda x: x[0], reverse=True)
     return asks, bids
 
-def fetch_ticker(name: str, symbol: str) -> Dict[str, Any]:
+def fetch_ticker(name: str, symbol: str):
     ex = get_exchange(name)
-    return ex.fetch_ticker(symbol)
+    sym = resolve_symbol_for_exchange(ex, symbol)
+    return ex.fetch_ticker(sym)
 
-def get_market_meta(name: str, symbol: str) -> Dict[str, Optional[float]]:
+def get_market_meta(name: str, symbol: str):
     ex = get_exchange(name)
+    sym = resolve_symbol_for_exchange(ex, symbol)
     markets = ex.load_markets()
-    m = markets[symbol]
-
-    # taker/maker fees
+    m = markets[sym]
     taker = m.get("taker", ex.fees.get("trading", {}).get("taker"))
     maker = m.get("maker", ex.fees.get("trading", {}).get("maker"))
-
     precision = (m.get("precision") or {})
     limits = (m.get("limits") or {})
-
     base_step = precision.get("amount")
     price_step = precision.get("price")
-
     min_base = (limits.get("amount") or {}).get("min")
     max_base = (limits.get("amount") or {}).get("max")
     min_cost = (limits.get("cost") or {}).get("min")
     max_cost = (limits.get("cost") or {}).get("max")
-
-    # (optioneel) withdraw fee als ccxt ‘m expose’t (niet elke venue)
     withdraws = ex.fees.get("funding", {}).get("withdraw", {}) if getattr(ex, "fees", None) else {}
     base = (m.get("base") or "").upper()
     withdraw_fee_base = None
@@ -78,7 +98,6 @@ def get_market_meta(name: str, symbol: str) -> Dict[str, Optional[float]]:
             withdraw_fee_base = fee_val.get("fee")
         elif isinstance(fee_val, (int, float)):
             withdraw_fee_base = float(fee_val)
-
     return {
         "taker_fee": float(taker) if taker is not None else None,
         "maker_fee": float(maker) if maker is not None else None,
@@ -93,6 +112,7 @@ def get_market_meta(name: str, symbol: str) -> Dict[str, Optional[float]]:
         "quote": m.get("quote"),
         "active": bool(m.get("active", True)),
     }
+
 
 def ping(name: str) -> Dict[str, Any]:
     # Simpele ping door time/fetch of load_markets; ccxt heeft geen uniforme ping
